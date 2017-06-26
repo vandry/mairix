@@ -23,7 +23,8 @@ struct imap_ll *imapc;
 		ERR_print_errors_fp(stderr);
 		return NULL;
 	}
-	SSL_CTX_load_verify_locations(sslctx, NULL, "/etc/ssl/certs");
+	SSL_CTX_set_default_verify_paths(sslctx);
+	SSL_CTX_load_verify_locations(sslctx, NULL, NULL); 
 	SSL_CTX_set_verify(sslctx, SSL_VERIFY_PEER, NULL);
 #endif
 

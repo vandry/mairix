@@ -10,6 +10,9 @@
 #include <poll.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
 #ifdef USE_OPENSSL
 #include <openssl/ssl.h>
 #include <openssl/err.h>
