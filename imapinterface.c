@@ -21,7 +21,8 @@ struct imap_ll *imapc;
 #ifdef USE_OPENSSL
 	SSL_load_error_strings();
 	SSL_library_init();
-	sslctx = SSL_CTX_new(SSLv23_client_method());
+	sslctx = SSL_CTX_new(TLSv1_client_method());
+        SSL_CTX_set_options(sslctx, SSL_OP_NO_SSL_MASK); 
 	if (!sslctx) {
 		fprintf(stderr, "SSL_CTX_new failed\n");
 		ERR_print_errors_fp(stderr);
@@ -224,6 +225,7 @@ const char *actual_uidvalidity, *got_uid, *got_raw;
 		l2 = l2->next;
 		if (l2->type != TLTYPE_LIST) continue;
 		got_uid = got_raw = NULL;
+                got_uid_len = raw_len = 0;
 		for (l2 = l2->first; l2 && (l2->next); l2 = l2->next) {
 			if (l2->type != TLTYPE_ATOM) continue;
 			if (0 == strcmp(l2->leaf, "UID")) {
