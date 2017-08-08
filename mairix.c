@@ -231,9 +231,10 @@ static void parse_rc_file(char *name)/*{{{*/
       line[len-1] = '\0';
     }
 
-    /* Strip trailing comments. */
-    for (p=line; *p && !strchr("#!;%", *p); p++) ;
-    if (*p) *p = '\0';
+    /* Discard comment lines. */
+    if (strchr("#", line[0])) {
+       continue;
+    }
 
     /* Discard blank lines */
     all_blank = 1;

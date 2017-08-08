@@ -109,8 +109,24 @@ esac
 generate_message >"$FILE"
 
 #asserting the message has the correct size
-if test "$SIZE" != "$(stat -c%s "$FILE")"
-then
-    rm -f "$FILE"
-    exit 1
-fi
+# FreeBSD stat uses "-f" for output formatting, GNU uses "-c"
+# FreeBSD stat use "%z" for total size in bytes, GNU uses "%s"
+case $(uname -s) in
+  Linux )
+    if test "$SIZE" != "$(stat -c%s "$FILE")"
+    then
+        rm -f "$FILE"
+        exit 1
+    fi
+  ;;
+  FreeBSD )
+    if test "$SIZE" != "$(stat -f%z "$FILE")"
+        then
+            rm -f "$FILE"
+            exit 1
+    fi
+  ;;
+  *)
+     echo "Unknown OS: $(uname -s)"
+  ;;
+esac
