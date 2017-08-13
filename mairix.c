@@ -461,6 +461,7 @@ static void usage(void)/*{{{*/
          "-t           : include all messages in same threads as matching messages\n"
          "-o <mfolder> : override setting of mfolder from mairixrc file\n"
          "-r           : force raw output regardless of mformat setting in mairixrc file\n"
+         "--no-lock    : skip database locking when searching\n"
          "-H           : force hard links rather than symbolic ones\n"
          "expr_i       : search expression (all expr's AND'ed together):\n"
          "    word          : match word in message body and major headers\n"
@@ -537,6 +538,7 @@ int main (int argc, char **argv)/*{{{*/
   int do_fast_index = 0;
   int do_mbox_symlinks = 0;
   struct imap_ll *imapc = NULL;
+  int do_not_lock = 0;
 
   unsigned int forced_hash_key = CREATE_RANDOM_DATABASE_HASH;
 
@@ -583,6 +585,8 @@ int main (int argc, char **argv)/*{{{*/
       do_integrity_checks = 0;
     } else if (!strcmp(*argv, "--unlock")) {
       do_forced_unlock = 1;
+    } else if (!strcmp(*argv, "--no-lock")) {
+      do_not_lock = 1;
     } else if (!strcmp(*argv, "-F") ||
                !strcmp(*argv, "--fast-index")) {
       do_fast_index = 1;
@@ -702,7 +706,13 @@ int main (int argc, char **argv)/*{{{*/
   signal(SIGINT, handlesig);
   signal(SIGQUIT, handlesig);
 
-  lock_database(database_path, do_forced_unlock);
+  if (do_not_lock && !do_search) {
+    fprintf(stderr, "Using --no-lock only permitted for searching\n");
+    exit(2);
+  }
+
+  if (!do_not_lock)
+    lock_database(database_path, do_forced_unlock);
 
   if (do_dump) {
     dump_database(database_path);
