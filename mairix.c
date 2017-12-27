@@ -42,6 +42,7 @@ int total_bytes=0;
 
 int verbose = 0;
 int do_hardlinks = 0;
+int do_index_all_headers = 0;
 
 static char *folder_base = NULL;
 static char *maildir_folders = NULL;
@@ -273,6 +274,7 @@ static void parse_rc_file(char *name)/*{{{*/
     else if (!strncasecmp(p, "mfolder=", 8)) mfolder = copy_value(p);
     else if (!strncasecmp(p, "database=", 9)) database_path = copy_value(p);
     else if (!strncasecmp(p, "nochecks", 8)) skip_integrity_checks = 1;
+    else if (!strncasecmp(p, "index_all_headers", 17)) do_index_all_headers = 1;
     else {
       if (verbose) {
         fprintf(stderr, "Unrecognized option at line %d in %s\n", lineno, name);
@@ -476,6 +478,8 @@ static void usage(void)/*{{{*/
          "    p:substring   : match substring of path\n"
          "    d:start-end   : match date range\n"
          "    z:low-high    : match messages in size range\n"
+         "    h:word        : match word in the value of any minor header\n"
+         "    h:X:Y:word    : match word in the value of minor headers named \"X\" or \"Y\"\n"
          "    bs:word       : match word in Subject: header or body (or any other group of prefixes)\n"
          "    s:word1,word2 : match both words in Subject:\n"
          "    s:word1/word2 : match either word or both words in Subject:\n"

@@ -36,15 +36,22 @@
 #include "mairix.h"
 #include "reader.h"
 #include "memmac.h"
+#include "headers.h"
 
 static void dump_token_chain(struct read_db *db, unsigned int n, unsigned int *tok_offsets, unsigned int *enc_offsets)
 {
   int i, j, incr;
   int on_line;
   unsigned char *foo;
+  char *prefix, *token;
   printf("%d entries\n", n);
   for (i=0; i<n; i++) {
-    printf("Word %d : <%s>\n", i, db->data + tok_offsets[i]);
+    token = db->data + tok_offsets[i];
+    prefix = resolve_prefix(token);
+    if (prefix)
+      printf("Word %d : <%s:%s>\n", i, prefix, token + 2);
+    else
+      printf("Word %d : <%s>\n", i, token);
     foo = (unsigned char *) db->data + enc_offsets[i];
     j = 0;
     on_line = 0;
@@ -145,6 +152,8 @@ void dump_database(char *filename)
   dump_toktable(db, &db->body, "Body");
   printf("--------------------------------\n");
   dump_toktable(db, &db->attachment_name, "Attachment names");
+  printf("--------------------------------\n");
+  dump_toktable(db, &db->minor_headers, "Minor headers");
   printf("--------------------------------\n");
   dump_toktable2(db, &db->msg_ids, "Message Ids");
   printf("--------------------------------\n");
