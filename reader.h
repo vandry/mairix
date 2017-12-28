@@ -27,7 +27,7 @@
 #define HEADER_MAGIC0 'M'
 #define HEADER_MAGIC1 'X'
 #define HEADER_MAGIC2 0xA5
-#define HEADER_MAGIC3 0x03
+#define HEADER_MAGIC3 0x04
 
 /*{{{ Constants for file data positions */
 #define UI_ENDIAN          1
@@ -75,10 +75,11 @@
 #define UI_SUBJECT_BASE   25
 #define UI_BODY_BASE      28
 #define UI_ATTACHMENT_NAME_BASE 31
-#define UI_MSGID_BASE     34
+#define UI_MINOR_HEADERS_BASE 34
+#define UI_MSGID_BASE     37
 
 /* Larger than the last table offset. */
-#define UI_HEADER_LEN     40
+#define UI_HEADER_LEN     43
 #define UC_HEADER_LEN     ((UI_HEADER_LEN) << 2)
 
 #define UI_N_OFFSET        0
@@ -103,6 +104,9 @@
 #define UI_ATTACHMENT_NAME_N    (UI_ATTACHMENT_NAME_BASE + UI_N_OFFSET)
 #define UI_ATTACHMENT_NAME_TOK  (UI_ATTACHMENT_NAME_BASE + UI_TOK_OFFSET)
 #define UI_ATTACHMENT_NAME_ENC  (UI_ATTACHMENT_NAME_BASE + UI_ENC_OFFSET)
+#define UI_MINOR_HEADERS_N    (UI_MINOR_HEADERS_BASE + UI_N_OFFSET)
+#define UI_MINOR_HEADERS_TOK  (UI_MINOR_HEADERS_BASE + UI_TOK_OFFSET)
+#define UI_MINOR_HEADERS_ENC  (UI_MINOR_HEADERS_BASE + UI_ENC_OFFSET)
 #define UI_MSGID_N        (UI_MSGID_BASE + UI_N_OFFSET)
 #define UI_MSGID_TOK      (UI_MSGID_BASE + UI_TOK_OFFSET)
 #define UI_MSGID_ENC0     (UI_MSGID_BASE + UI_ENC_OFFSET)
@@ -167,6 +171,7 @@ struct read_db {/*{{{*/
   struct toktable_db body;
   struct toktable_db attachment_name;
   struct toktable2_db msg_ids;
+  struct toktable_db minor_headers;
 
 };
 /*}}}*/

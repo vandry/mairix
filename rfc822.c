@@ -98,6 +98,7 @@ static void init_headers(struct headers *hdrs)/*{{{*/
   hdrs->cc = NULL;
   hdrs->from = NULL;
   hdrs->subject = NULL;
+  hdrs->minor_headers = NULL;
   hdrs->message_id = NULL;
   hdrs->in_reply_to = NULL;
   hdrs->references = NULL;
@@ -998,9 +999,11 @@ struct rfc822 *data_to_rfc822(struct msg_src *src,
 {
   struct rfc822 *result;
   char *body_start;
+  char *colon;
   struct line header;
   struct line *x, *nx;
   struct nvp *ct_nvp, *cte_nvp, *cd_nvp, *nvp;
+  struct header_name_value *minor_header;
   int body_len;
 
   if (error) *error = DTR8_OK; /* default */
@@ -1048,6 +1051,15 @@ struct rfc822 *data_to_rfc822(struct msg_src *src,
       scan_status_flags(x->text + sizeof("status:"), &result->hdrs);
     else if (match_string("x-status:", x->text))
       scan_status_flags(x->text + sizeof("x-status:"), &result->hdrs);
+    else if (do_index_all_headers && (colon = strchr(x->text, ':'))) {
+      *colon = '\0';
+      minor_header = new(struct header_name_value);
+      minor_header->next = result->hdrs.minor_headers;
+      minor_header->name = new_string(x->text);
+      minor_header->value = new_string(colon + 1);
+      result->hdrs.minor_headers = minor_header;
+      *colon = ':';
+    }
   }
 /*}}}*/
 
@@ -1443,6 +1455,7 @@ struct rfc822 *make_rfc822(char *filename)/*{{{*/
 void free_rfc822(struct rfc822 *msg)/*{{{*/
 {
   struct attachment *a, *na;
+  void *p;
 
   if (!msg) return;
 
@@ -1453,6 +1466,12 @@ void free_rfc822(struct rfc822 *msg)/*{{{*/
   if (msg->hdrs.message_id) free(msg->hdrs.message_id);
   if (msg->hdrs.in_reply_to) free(msg->hdrs.in_reply_to);
   if (msg->hdrs.references) free(msg->hdrs.references);
+
+  for (; (p = msg->hdrs.minor_headers); free(p)) {
+    free(msg->hdrs.minor_headers->name);
+    free(msg->hdrs.minor_headers->value);
+    msg->hdrs.minor_headers = msg->hdrs.minor_headers->next;
+  }
 
   for (a = msg->atts.next; a != &msg->atts; a = na) {
     na = a->next;

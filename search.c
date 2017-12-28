@@ -45,6 +45,7 @@
 #include "reader.h"
 #include "memmac.h"
 #include "imapinterface.h"
+#include "headers.h"
 
 static void mark_hits_in_table(struct read_db *db, struct toktable_db *tt, int hit_tok, char *hits)/*{{{*/
 {
@@ -247,7 +248,7 @@ static int substring_match_general(unsigned long *a, unsigned long hit, int left
 }
 /*}}}*/
 
-static void match_substring_in_table(struct read_db *db, struct toktable_db *tt, char *substring, int max_errors, int left_anchor, char *hits)/*{{{*/
+static void match_substring_in_table(struct read_db *db, struct toktable_db *tt, char *substring, int max_errors, int left_anchor, char *hits, char **accepted_prefixes)/*{{{*/
 {
 
   int i, got_hit;
@@ -265,6 +266,10 @@ static void match_substring_in_table(struct read_db *db, struct toktable_db *tt,
   }
   for (i=0; i<tt->n; i++) {
     token = db->data + tt->tok_offsets[i];
+
+    if (table_tokens_have_prefixes(db, tt) && !(token = token_without_prefix(token, accepted_prefixes)))
+      continue;
+
     switch (max_errors) {
       /* Optimise common cases for few errors to allow optimizer to keep bitmaps
        * in registers */
@@ -291,52 +296,7 @@ static void match_substring_in_table(struct read_db *db, struct toktable_db *tt,
   if (r)  free(r);
   if (nr) free(nr);
 }
-/*}}}*/
-static void match_substring_in_table2(struct read_db *db, struct toktable2_db *tt, char *substring, int max_errors, int left_anchor, char *hits)/*{{{*/
-{
 
-  int i, got_hit;
-  unsigned long a[256];
-  unsigned long *r=NULL, *nr=NULL;
-  unsigned long hit;
-  char *token;
-
-  build_match_vector(substring, a, &hit);
-
-  got_hit = 0;
-  if (max_errors > 3) {
-    r = new_array(unsigned long, 1 + max_errors);
-    nr = new_array(unsigned long, 1 + max_errors);
-  }
-  for (i=0; i<tt->n; i++) {
-    token = db->data + tt->tok_offsets[i];
-    switch (max_errors) {
-      /* Optimise common cases for few errors to allow optimizer to keep bitmaps
-       * in registers */
-      case 0:
-        got_hit = substring_match_0(a, hit, left_anchor, token);
-        break;
-      case 1:
-        got_hit = substring_match_1(a, hit, left_anchor, token);
-        break;
-      case 2:
-        got_hit = substring_match_2(a, hit, left_anchor, token);
-        break;
-      case 3:
-        got_hit = substring_match_3(a, hit, left_anchor, token);
-        break;
-      default:
-        got_hit = substring_match_general(a, hit, left_anchor, token, max_errors, r, nr);
-        break;
-    }
-    if (got_hit) {
-      mark_hits_in_table2(db, tt, i, hits);
-    }
-  }
-  if (r)  free(r);
-  if (nr) free(nr);
-}
-/*}}}*/
 static void match_substring_in_paths(struct read_db *db, char *substring, int max_errors, int left_anchor, char *hits)/*{{{*/
 {
 
@@ -396,13 +356,19 @@ next_message:
   if (nr) free(nr);
 }
 /*}}}*/
-static void match_string_in_table(struct read_db *db, struct toktable_db *tt, char *key, char *hits)/*{{{*/
+static void match_string_in_table(struct read_db *db, struct toktable_db *tt, char *key, char *hits, char **accepted_prefixes)/*{{{*/
 {
   /* TODO : replace with binary search? */
   int i;
+  char *token;
 
   for (i=0; i<tt->n; i++) {
-    if (!strcmp(key, db->data + tt->tok_offsets[i])) {
+    token = db->data + tt->tok_offsets[i];
+
+    if (table_tokens_have_prefixes(db, tt) && !(token = token_without_prefix(token, accepted_prefixes)))
+      continue;
+
+    if (!strcmp(key, token)) {
       /* get all matching files */
       mark_hits_in_table(db, tt, i, hits);
     }
@@ -832,7 +798,7 @@ static void string_tolower(char *str)
 static int do_search(struct read_db *db, char **args, char *output_path, int show_threads, enum folder_type ft, int verbose, const char *imap_pipe, const char *imap_server, const char *imap_username, const char *imap_password, int please_clear)/*{{{*/
 {
   char *colon, *start_words;
-  int do_body, do_subject, do_from, do_to, do_cc, do_date, do_size;
+  int do_body, do_subject, do_from, do_to, do_cc, do_date, do_size, do_minor_headers;
   int do_att_name;
   int do_flags;
   int do_path, do_msgid;
@@ -843,6 +809,7 @@ static int do_search(struct read_db *db, char **args, char *output_path, int sho
   int left_anchor;
   int imap_tried = 0;
   struct imap_ll *imapc;
+  int did_minor_headers = 0;
 
 #define GET_IMAP if (!imap_tried) {\
         imap_tried = 1;\
@@ -895,6 +862,7 @@ static int do_search(struct read_db *db, char **args, char *output_path, int sho
     do_msgid = 0;
     do_att_name = 0;
     do_flags = 0;
+    do_minor_headers = 0;
 
     colon = strchr(key, ':');
 
@@ -915,6 +883,7 @@ static int do_search(struct read_db *db, char **args, char *output_path, int sho
           case 'm': do_msgid = 1; break;
           case 'n': do_att_name = 1; break;
           case 'F': do_flags = 1; break;
+          case 'h': do_minor_headers = 1; break;
           default: fprintf(stderr, "Unknown key type <%c>\n", *p); break;
         }
       }
@@ -965,6 +934,8 @@ static int do_search(struct read_db *db, char **args, char *output_path, int sho
       int negate;
       int had_orsep;
       int max_errors;
+      char **header_list = NULL;
+      char *last_colon;
 
       orsep = strchr(start_words, '/');
       andsep  = strchr(start_words, ',');
@@ -999,6 +970,41 @@ static int do_search(struct read_db *db, char **args, char *output_path, int sho
 
       orig_word = word;
 
+      last_colon = strrchr(word, ':');
+
+      if (last_colon) {
+        if (!do_minor_headers && !do_att_name) {
+          fprintf(stderr, "A colon can only be used in queries for attachment "
+                  "filenames and minor header values.\n");
+          unlock_and_exit(2);
+        }
+
+        if (do_minor_headers && do_att_name) {
+          fprintf(stderr, "A colon cannot appear in a pattern argument that "
+                  "searches minor header values and attachment names.\n");
+          unlock_and_exit(2);
+        }
+
+        /* Colons a list of colon delimited header names can be used to
+         * restrict which headers are searched for an expression. */
+        if (do_minor_headers) {
+          size_t n = 0;
+          char *cursor;
+          header_list = new_array(char *, strlen(word) / 2 + 1); /* worst-case allocation */
+          *last_colon = '\0';
+
+          for (cursor = word; *cursor && cursor < last_colon; cursor++) {
+            if (*cursor == ':')
+              *cursor = '\0';
+            else if (cursor == word || (*cursor != '\0' && *(cursor - 1) == '\0'))
+              header_list[n++] = cursor;
+          }
+
+          header_list[n] = NULL;
+          word = last_colon + 1;
+        }
+      }
+
       if (word[0] == '~') {
         negate = 1;
         word++;
@@ -1030,25 +1036,30 @@ static int do_search(struct read_db *db, char **args, char *output_path, int sho
 
       memset(hit0, 0, db->n_msgs);
       if (equal) {
-        if (do_to) match_substring_in_table(db, &db->to, lower_word, max_errors, left_anchor, hit0);
-        if (do_cc) match_substring_in_table(db, &db->cc, lower_word, max_errors, left_anchor, hit0);
-        if (do_from) match_substring_in_table(db, &db->from, lower_word, max_errors, left_anchor, hit0);
-        if (do_subject) match_substring_in_table(db, &db->subject, lower_word, max_errors, left_anchor, hit0);
-        if (do_body) match_substring_in_table(db, &db->body, lower_word, max_errors, left_anchor, hit0);
-        if (do_att_name) match_substring_in_table(db, &db->attachment_name, lower_word, max_errors, left_anchor, hit0);
+        if (do_to) match_substring_in_table(db, &db->to, lower_word, max_errors, left_anchor, hit0, NULL);
+        if (do_cc) match_substring_in_table(db, &db->cc, lower_word, max_errors, left_anchor, hit0, NULL);
+        if (do_from) match_substring_in_table(db, &db->from, lower_word, max_errors, left_anchor, hit0, NULL);
+        if (do_subject) match_substring_in_table(db, &db->subject, lower_word, max_errors, left_anchor, hit0, NULL);
+        if (do_body) match_substring_in_table(db, &db->body, lower_word, max_errors, left_anchor, hit0, NULL);
+        if (do_att_name) match_substring_in_table(db, &db->attachment_name, lower_word, max_errors, left_anchor, hit0, NULL);
+        if (do_minor_headers) match_substring_in_table(db, &db->minor_headers, lower_word, max_errors, left_anchor, hit0, header_list);
         if (do_path) match_substring_in_paths(db, word, max_errors, left_anchor, hit0);
       } else {
-        if (do_to) match_string_in_table(db, &db->to, lower_word, hit0);
-        if (do_cc) match_string_in_table(db, &db->cc, lower_word, hit0);
-        if (do_from) match_string_in_table(db, &db->from, lower_word, hit0);
-        if (do_subject) match_string_in_table(db, &db->subject, lower_word, hit0);
-        if (do_body) match_string_in_table(db, &db->body, lower_word, hit0);
-        if (do_att_name) match_string_in_table(db, &db->attachment_name, lower_word, hit0);
+        if (do_to) match_string_in_table(db, &db->to, lower_word, hit0, NULL);
+        if (do_cc) match_string_in_table(db, &db->cc, lower_word, hit0, NULL);
+        if (do_from) match_string_in_table(db, &db->from, lower_word, hit0, NULL);
+        if (do_subject) match_string_in_table(db, &db->subject, lower_word, hit0, NULL);
+        if (do_body) match_string_in_table(db, &db->body, lower_word, hit0, NULL);
+        if (do_att_name) match_string_in_table(db, &db->attachment_name, lower_word, hit0, NULL);
+        if (do_minor_headers) match_string_in_table(db, &db->minor_headers, lower_word, hit0, header_list);
         /* FIXME */
         if (do_path) match_substring_in_paths(db, word, 0, left_anchor, hit0);
       }
 
+      did_minor_headers |= do_minor_headers;
+
       free(lower_word);
+      free(header_list);
 
       /* AND-combine match vectors */
       for (i=0; i<db->n_msgs; i++) {
@@ -1394,6 +1405,15 @@ static int do_search(struct read_db *db, char **args, char *output_path, int sho
     printf("Matched %d messages\n", n_hits);
   }
   fflush(stdout);
+
+  if (did_minor_headers && !do_index_all_headers && (&db->minor_headers)->n == 0) {
+    fprintf(stderr,
+            "WARNING : \n"
+            "The search expression included a clause to search minor headers,\n"
+            "but \"index_all_headers\" is not in the configuration file, and\n"
+            "the the database has 0 entries in the corresponding table, so\n"
+            "the minorellaneous headers might not actually be indexed.\n");
+  }
 
   if (had_failed_checksum) {
     fprintf(stderr,

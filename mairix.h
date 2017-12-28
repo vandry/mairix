@@ -152,11 +152,19 @@ struct attachment {/*{{{*/
   } data;
 };
 /*}}}*/
+struct header_name_value {/*{{{*/
+  struct header_name_value *next;
+  char *name;
+  char *value;
+};
+/*}}}*/
 struct headers {/*{{{*/
   char *to;
   char *cc;
   char *from;
   char *subject;
+
+  struct header_name_value *minor_headers;
 
   /* The following are needed to support threading */
   char *message_id;
@@ -248,6 +256,7 @@ struct database {/*{{{*/
   struct toktable *subject;
   struct toktable *body;
   struct toktable *attachment_name;
+  struct toktable *minor_headers;
 
   /* Encoding chain 0 stores all msgids appearing in the following message headers:
    * Message-Id, In-Reply-To, References.  Used for thread reconciliation.
@@ -290,6 +299,7 @@ extern struct traverse_methods mbox_traverse_methods;
 
 extern int verbose; /* cmd line -v switch */
 extern int do_hardlinks; /* cmd line -H switch */
+extern int do_index_all_headers; /* "index_all_headers" configuration option */
 
 /* Lame fix for systems where NAME_MAX isn't defined after including the above
  * set of .h files (Solaris, FreeBSD so far).  Probably grossly oversized but

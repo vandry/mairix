@@ -29,6 +29,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include "imapinterface.h"
+#include "headers.h"
 
 struct sortable_token {/*{{{*/
   char *text;
@@ -197,6 +198,8 @@ void check_database_integrity(struct database *db)/*{{{*/
   check_toktable_enc_integrity(db->n_msgs, db->body);
   if (verbose) fprintf(stderr, "Checking attachment_name\n");
   check_toktable_enc_integrity(db->n_msgs, db->attachment_name);
+  if (verbose) fprintf(stderr, "Checking minor_headers\n");
+  check_toktable_enc_integrity(db->n_msgs, db->minor_headers);
 }
 /*}}}*/
 struct database *new_database(unsigned int hash_key)/*{{{*/
@@ -211,6 +214,7 @@ struct database *new_database(unsigned int hash_key)/*{{{*/
   result->subject = new_toktable();
   result->body = new_toktable();
   result->attachment_name = new_toktable();
+  result->minor_headers = new_toktable();
 
   result->msg_ids = new_toktable2();
 
@@ -244,6 +248,7 @@ void free_database(struct database *db)/*{{{*/
   free_toktable(db->subject);
   free_toktable(db->body);
   free_toktable(db->attachment_name);
+  free_toktable(db->minor_headers);
   free_toktable2(db->msg_ids);
 
   if (db->msgs) {
@@ -521,6 +526,7 @@ struct database *new_database_from_file(char *db_filename, int do_integrity_chec
   import_toktable(input->data, input->hash_key, result->n_msgs, &input->subject, result->subject);
   import_toktable(input->data, input->hash_key, result->n_msgs, &input->body, result->body);
   import_toktable(input->data, input->hash_key, result->n_msgs, &input->attachment_name, result->attachment_name);
+  import_toktable(input->data, input->hash_key, result->n_msgs, &input->minor_headers, result->minor_headers);
   import_toktable2(input->data, input->hash_key, result->n_msgs, &input->msg_ids, result->msg_ids);
 
   close_db(input);
@@ -598,10 +604,12 @@ static inline int char_valid_p(char x, unsigned int mask)/*{{{*/
   else return 0;
 }
 /*}}}*/
-static void tokenise_string(int file_index, unsigned int hash_key, struct toktable *table, char *data, int match_mask)/*{{{*/
+static void tokenise_string(char *prefix, int file_index, unsigned int hash_key, struct toktable *table, char *data, int match_mask)/*{{{*/
 {
-  char *ss, *es, old_es;
+  char *ss, *es, old_es, *token;
+
   ss = data;
+
   for (;;) {
     while (*ss && !char_valid_p(*ss,match_mask)) ss++;
     if (!*ss) break;
@@ -611,9 +619,16 @@ static void tokenise_string(int file_index, unsigned int hash_key, struct toktab
     /* deal with token [ss,es) */
     old_es = *es;
     *es = '\0';
+    token = ss;
+
+    if (prefix)
+      token = extend_string(extend_string(new_string(compress_prefix(prefix)), ":"), ss);
+
     /* FIXME: Ought to do this by passing start and length - clean up later */
-    add_token_in_file(file_index, hash_key, ss, table);
+    add_token_in_file(file_index, hash_key, token, table);
     *es = old_es;
+
+    if (prefix) free(token);
 
     if (!*es) break;
     ss = es;
@@ -658,23 +673,30 @@ void tokenise_message(int file_index, struct database *db, struct rfc822 *msg)/*
 
   /* Match on whole addresses in these headers as well as the individual words */
   if (msg->hdrs.to) {
-    tokenise_string(file_index, db->hash_key, db->to, msg->hdrs.to, 1);
-    tokenise_string(file_index, db->hash_key, db->to, msg->hdrs.to, 2);
+    tokenise_string(NULL, file_index, db->hash_key, db->to, msg->hdrs.to, 1);
+    tokenise_string(NULL, file_index, db->hash_key, db->to, msg->hdrs.to, 2);
   }
   if (msg->hdrs.cc) {
-    tokenise_string(file_index, db->hash_key, db->cc, msg->hdrs.cc, 1);
-    tokenise_string(file_index, db->hash_key, db->cc, msg->hdrs.cc, 2);
+    tokenise_string(NULL, file_index, db->hash_key, db->cc, msg->hdrs.cc, 1);
+    tokenise_string(NULL, file_index, db->hash_key, db->cc, msg->hdrs.cc, 2);
   }
   if (msg->hdrs.from) {
-    tokenise_string(file_index, db->hash_key, db->from, msg->hdrs.from, 1);
-    tokenise_string(file_index, db->hash_key, db->from, msg->hdrs.from, 2);
+    tokenise_string(NULL, file_index, db->hash_key, db->from, msg->hdrs.from, 1);
+    tokenise_string(NULL, file_index, db->hash_key, db->from, msg->hdrs.from, 2);
   }
-  if (msg->hdrs.subject) tokenise_string(file_index, db->hash_key, db->subject, msg->hdrs.subject, 1);
+
+  for (struct header_name_value *h = msg->hdrs.minor_headers; h; h = h->next) {
+    tokenise_string(h->name, file_index, db->hash_key, db->minor_headers, h->value, 1);
+    if (strchr(h->value, '@'))
+      tokenise_string(h->name, file_index, db->hash_key, db->minor_headers, h->value, 2);
+  }
+
+  if (msg->hdrs.subject) tokenise_string(NULL, file_index, db->hash_key, db->subject, msg->hdrs.subject, 1);
 
   for (a=msg->atts.next; a!=&msg->atts; a=a->next) {
     switch (a->ct) {
       case CT_TEXT_PLAIN:
-        tokenise_string(file_index, db->hash_key, db->body, a->data.normal.bytes, 1);
+        tokenise_string(NULL, file_index, db->hash_key, db->body, a->data.normal.bytes, 1);
         break;
       case CT_TEXT_HTML:
         tokenise_html_string(file_index, db->hash_key, db->body, a->data.normal.bytes);
@@ -1333,6 +1355,7 @@ int cull_dead_messages(struct database *db, int do_integrity_checks)/*{{{*/
   recode_toktable(db->subject, new_idx);
   recode_toktable(db->body, new_idx);
   recode_toktable(db->attachment_name, new_idx);
+  recode_toktable(db->minor_headers, new_idx);
   recode_toktable2(db->msg_ids, new_idx);
 
   /* And crunch down the filename table */
