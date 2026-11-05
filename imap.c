@@ -1091,7 +1091,6 @@ find_capability_list_from_greeting(struct imap_ll *ll, struct imap_ll_tokenlist 
 	}
 }
 
-#ifdef USE_OPENSSL
 static int
 have_capability(struct imap_ll_tokenlist *l, const char *cap)
 {
@@ -1100,7 +1099,6 @@ have_capability(struct imap_ll_tokenlist *l, const char *cap)
 	}
 	return 0;
 }
-#endif
 
 static int
 need_capability(struct imap_ll_tokenlist *l, const char *cap)
@@ -1194,7 +1192,8 @@ const char *status;
 		ret = imap_login_denied;
 		goto exit;
 	}
-	if (!need_capability(caps, "AUTH=PLAIN")) {
+	if (have_capability(caps, "LOGINDISABLED")) {
+		fprintf(stderr, "IMAP server does not allow LOGIN on this connection\n");
 		ret = imap_login_error;
 		goto exit;
 	}
