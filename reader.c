@@ -209,11 +209,13 @@ struct read_db *open_db(char *filename)/*{{{*/
       ucdata[1] == HEADER_MAGIC1 ||
       ucdata[2] == HEADER_MAGIC2) {
     if (ucdata[3] != HEADER_MAGIC3) {
-      fprintf(stderr, "Another version of this program produced the existing database!  Please rebuild.\n");
+      fprintf(stderr, "Another version of this program produced the existing database %s!\n"
+                      "Remove it and run mairix again to rebuild it.\n", filename);
       unlock_and_exit(2);
     }
   } else {
-    fprintf(stderr, "The existing database wasn't produced by this program!  Please rebuild.\n");
+    fprintf(stderr, "The existing database %s wasn't produced by this program!\n"
+                    "Remove it and run mairix again to rebuild it.\n", filename);
     unlock_and_exit(2);
   }
   /*}}}*/
