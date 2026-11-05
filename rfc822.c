@@ -687,8 +687,21 @@ static void do_body(struct msg_src *src,
   char *decoded_body;
   int decoded_body_len;
   const char *content_transfer_encoding;
+  struct content_type_header ct;
+  int is_multipart;
+
+  ct.major = NULL;
+  is_multipart = 0;
+  if (ct_nvp) {
+    parse_content_type(ct_nvp, &ct);
+    is_multipart = (ct.major && !strcasecmp(ct.major, "multipart"));
+  }
+
   content_transfer_encoding = NULL;
-  if (cte_nvp) {
+  if (cte_nvp && !is_multipart) {
+    /* RFC 2045 section 6.4: a multipart entity may only use the identity
+     * encodings 7bit, 8bit or binary, so any encoding named on a multipart
+     * is bogus and must not be applied before the boundaries are found. */
     content_transfer_encoding = nvp_first(cte_nvp);
     if (!content_transfer_encoding) {
       fprintf(stderr, "Giving up on %s, content_transfer_encoding header not parseable\n",
@@ -700,9 +713,7 @@ static void do_body(struct msg_src *src,
   decoded_body = unencode_data(src, body_start, body_len, content_transfer_encoding, &decoded_body_len);
 
   if (ct_nvp) {
-    struct content_type_header ct;
-    parse_content_type(ct_nvp, &ct);
-    if (ct.major && !strcasecmp(ct.major, "multipart")) {
+    if (is_multipart) {
       do_multipart(src, decoded_body, decoded_body_len, ct.boundary, atts, error);
       /* Don't need decoded body any longer - copies have been taken if
        * required when handling multipart attachments. */
