@@ -1271,6 +1271,31 @@ static struct ro_mapping *find_ro_cache(const char *filename, int *lasti)
   return NULL;
 }
 
+/* Like tmpfile(), but honor TMPDIR instead of always using /tmp. */
+static FILE *open_temp_file(void)/*{{{*/
+{
+  const char *dir;
+  char *template;
+  int fd;
+  FILE *f;
+
+  dir = getenv("TMPDIR");
+  if (!dir || !*dir) dir = "/tmp";
+  template = new_array(char, strlen(dir) + sizeof("/mairix.XXXXXX"));
+  sprintf(template, "%s/mairix.XXXXXX", dir);
+  fd = mkstemp(template);
+  if (fd < 0) {
+    free(template);
+    return NULL;
+  }
+  unlink(template);
+  free(template);
+  f = fdopen(fd, "w+b");
+  if (!f) close(fd);
+  return f;
+}
+/*}}}*/
+
 /*
  * put a new tempfile into the cache.  It is mmaped as part of this function
  * so you can safely close the file handle after calling this.
@@ -1340,9 +1365,9 @@ void create_ro_mapping(const char *filename, unsigned char **data, int *len, enu
       fprintf(stderr, "Decompressing %s...\n", filename);
     }
 
-    tmpf = tmpfile();
+    tmpf = open_temp_file();
     if (!tmpf) {
-      perror("tmpfile");
+      perror("open_temp_file");
       goto comp_error;
     }
     zf = xx_zopen(filename, "rb");
