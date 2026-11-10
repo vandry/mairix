@@ -84,9 +84,14 @@ void lock_database(char *path, int forced_unlock)/*{{{*/
         in = fopen(lock_file_name, "r");
         if (in) {
           char line[2048];
-          fgets(line, sizeof(line), in);
-          line[strlen(line)-1] = 0; /* strip trailing newline */
-          fprintf(stderr, "Database %s appears to be locked by (pid,node,user)=(%s)\n", path, line);
+          if (fgets(line, sizeof(line), in)) {
+            line[strcspn(line, "\n")] = 0; /* strip trailing newline */
+            fprintf(stderr, "Database %s appears to be locked by (pid,node,user)=(%s)\n", path, line);
+          } else {
+            fprintf(stderr, "Database %s appears to be locked, but the lock file is empty\n", path);
+          }
+          fprintf(stderr, "If no other mairix is running, remove the lock file %s\n", lock_file_name);
+          fclose(in);
           unlink(tname);
           exit(1);
         }
