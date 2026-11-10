@@ -43,7 +43,7 @@ install : all
 	cp dfasyn.5 $(man5dir)
 
 dfasyn : $(OBJ)
-	$(CC) $(CFLAGS) -o dfasyn $(OBJ)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o dfasyn $(OBJ)
 
 parse.c parse.h : parse.y
 	bison -v -d -o parse.c parse.y

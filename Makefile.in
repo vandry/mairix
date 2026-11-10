@@ -85,7 +85,7 @@ version.h:
 	./mkversion
 
 ./dfasyn/dfasyn:
-	if [ -d dfasyn ]; then cd dfasyn ; $(MAKE) CC="$(CC)" CFLAGS="$(CFLAGS)" ; else echo "No dfasyn subdirectory?" ; exit 1 ; fi
+	if [ -d dfasyn ]; then cd dfasyn ; $(MAKE) CC="$(CC)" CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)" ; else echo "No dfasyn subdirectory?" ; exit 1 ; fi
 
 clean:
 	-rm -f *~ *.o mairix *.s core
